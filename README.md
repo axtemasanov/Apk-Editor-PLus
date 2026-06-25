@@ -1,61 +1,295 @@
-# Apk Editor Plus
+# Создание APK и публикация проекта
 
-Apk Editor Plus is a powerful and versatile Android application designed for deep modification and exploration of APK files. Whether you're a developer needing to inspect a package or a modder looking to customize an app, Apk Editor Plus provides a comprehensive suite of tools directly on your Android device.
+В данном разделе мы познакомимся:
 
-> [!WARNING]
-> This project is currently **under development** and may contain bugs. Use it at your own risk.
+1. Как правильно создавать свой APK файл, которые любой пользователь сможет установить на своё Android устройство. 
+2. Рассмотрим отличия отладочной и релизной сборки.
+3. Подпишем нашу сборку секретными ключами
+4. Воспользуемся Github для автоматизации сборок.
 
-## 🚀 Features
+## Как создать APK файл?
 
-- **Resource Editing**: Modify AXML, String resources, Colors, and XML files directly.
-- **Advanced Code Editor**: Powered by [Sora Editor](https://github.com/Rosemoe/sora-editor), featuring syntax highlighting and smooth performance.
-- **APK Signer**: Build and sign your modified APKs with custom or internal keystores.
-- **KeyStore Manager**: Easily manage your digital certificates and signing keys.
-- **SQLite Support**: View and edit SQLite databases within APKs or app data.
-- **Image Editor**: View and modify PNG assets within packages.
-- **Project-Based Workflow**: Manage complex modifications as organized projects for better tracking.
-- **User-Friendly Interface**: Clean and intuitive UI designed for mobile efficiency.
+APK (Android Package Kit) файл - это аналог установочного файла на компьютер, только для систем на базе Android.
 
-## 🛠️ Tech Stack
+Для его создания нам необходимо в открытом через Android Studio проекте выбрать: `Build -> Build App Bundle(s) / APK(s) -> Build APK(s)`. Если же мы только что создали пустой проект, то по умолчанию таким образом мы соберём Debug (отладочную) сборку нашего приложения. Результат данной операции будет выведен в правую нижнюю часть редактора, которой сообщит об успешной сборке и укажет расположение файла: `<ПУТЬ ДО ПРОЕКТА>/app/build/outputs/apk/debug/app-debug.apk`.
 
-- **Language**: Kotlin
-- **Build System**: Gradle (Kotlin DSL)
-- **Core Libraries**:
-    - [Sora Editor](https://github.com/Rosemoe/sora-editor) for code editing.
-    - `apksig` for secure APK signing.
-    - `bouncycastle` for cryptographic support.
-    - `gson` for data handling.
-    - `aXML` for Android XML manipulation.
+Данный файл можно установить на устройство или эмулятор и он будет функционировать корректно, но при работе будет дополнительно содержать отладочные данные. Помимо отладочной сборки существует также и возможно аналогично создать и сборку для публикации (release сборка). Для этого по умолчанию в каждом проекте существует по умолчанию два типа сборки: debug и release соответственно. По умолчанию выбран первый. Давайте заменим его на release. Для этого необходимо: `Build -> Select Build Variant...`, после которого откроется панель в правой нижней части экрана, где есть названия модуля (`app`) и напротив вариант, который по умолчанию установлен как `debug`. Необходимо нажать на него и выбрать `release`, после чего запустится пересборка проекта, по окончанию которой необходимо повторить действие создания APK проекта, но на этот раз, путь до него будет: `<ПУТЬ ДО ПРОЕКТА>/app/build/outputs/apk/release/app-release-unsigned.apk`. При попытке установить такую сборку не каждое устройство сможет это сделать, поскольку данная сборка является неподписанной. Система всегда требует, чтобы Ваше приложение было подписано цифровым сертификатом с подписью, которое бы подтверждало его подлинность.
 
-## 🏗️ Getting Started
+Но перед тем, как перейдём к подписи приложения, немного поговорим про оптимизацию данной сборки.
 
-### Prerequisites
-- Android Studio Ladybug or newer.
-- JDK 17.
-- Android device or emulator (API 24+).
+## Оптимизация release сборки
 
-### Building from Source
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/FabioSilva11/Apk-Editor-PLus.git
-   ```
-2. Open the project in Android Studio.
-3. Sync Project with Gradle Files.
-4. Build and run the `app` module.
+Для начала давайте сравним уже созданные в предыдущем разделе две наших сборки:
 
-## 🤝 Contributing
+1. debug - 8.5 MB
+2. release - 5.8 MB
 
-We welcome contributions of all kinds! This project is a labor of love, and we'd love for you to help make it even better.
+Как можно ответить, по умолчанию release сборка настроена таким образом, что в ходе сборки вырезает отладочную информацию, тем самым уменьшая размер APK файла. Но дополнительно ещё сильнее уменьшить итоговый вес APK файла. Для этого необходимо перейти в файл `build.gradle.kts`, который находится в папке `app`. Там можно найти настройки разных типов сборки:
 
-- **Found a bug?** Open an issue.
-- **Have a feature idea?** Submit a proposal in the discussions.
-- **Want to code?** Fork the repo and submit a Pull Request!
+```kotlin-script
+...
+android {
+  ...
+  buildTypes {
+    release { // <-- Настройка release сборки 
+      ...
+    }
+  }
+}
+```
 
-Please make sure to follow the existing code style and provide clear descriptions for your changes.
+По умолчанию там выключена уменьшение размера сборки с помощью обфускации и удаления неиспользуемых блоков кода, а также настроены файлы с правилами обфускации. Для начала давайте включим уменьшение размера сборки, но перед этим разберём, что он будет делать.
 
-## 📄 License
+- Удаление неиспользуемых блоков кода. Даже в самом простом проекте уже есть неиспользуемые фрагменты кода. Они находятся не в написанном разработчиком кода, а в стандартных библиотеках, которые предлагают нам обширный функционал, весь который у нас не используется. Данная операция оставит только используемый.
+- Обфускация — процесс изменения кода программы, в результате которого он приобретает вид, трудный для понимания – при этом программа сохраняет свои функции. Поскольку исходный код приложения компилируется в Java bytecode, то его можно дополнительно оптимизировать, используя более короткие названия или различного типа оптимизации.
 
-This project is licensed under the [MIT License](LICENSE) (Placeholder - please update if you have a specific license in mind).
+**Важно отметить!** В ходе применения данного флага происходит изменение Вашего исходного кода и поэтому данную сборку необходимо дополнительно проверять. Например, при использовании классов для парсинга JSON файлов необходимо указывать аннотации, которые расскажут библиотеке, как необходимо десериализовать объект. Без этих аннотаций библиотеки используют название полей класса, которые будут изменены при обуфскации. Если же Ваш код уже написан без данных вспомогательных аннотаций - вы можете добавить в исключение данный пакет с помощью настройки файлов обуфскации, про которые можно прочитать [здесь](https://developer.android.com/build/shrink-code#keep-code).
 
----
-*Developed with ❤️ by the Apk Editor Plus Team.*
+Помимо этого флага, включим дополнительные:
+
+- `isShrinkResources = true` - позволяет избавиться от неиспользуемых ресурсных файлов;
+- `isDebuggable = false` - отключает отладочные секции кода.
+
+Итоговый код будет выглядеть следующим образом:
+
+```kotlin-script
+...
+android {
+  ...
+  buildTypes {
+    release {
+      isMinifyEnabled = true
+      isShrinkResources = true
+      isDebuggable = false
+      ...
+    }
+  }
+}
+```
+
+Если мы попробуем собрать release сборку, то получим размер: ~650 KB.
+
+## Подписываем сборку
+
+Для создания подписанного APK файла нам необходимо создать хранилище, в котором будут хранится ключи для любых наших приложений. Для этого необходимо перейти `Build -> Generate Signed App Bundle / APK...`. После чего мы попадём на мастер по созданию подписанного APK файла. На первом этапе нам предлагается, какой файл мы хотим подписать: AAB или APK. Первый используется только для магазинов приложений, поэтому выбираем APK и нажимаем `Next`. На следующем этапе нам предлагаю заполнить все поля, которые необходимы для подписи:
+
+- Key store path - путь до хранилища ключей. Если это Ваше первое приложение - то необходимо создать новый через соответствующую кнопку `Create new...`.
+- Key store password - пароль к хранилищу всех ключей, придуманный Вами на момент создания.
+- Key alias - выбор ключа из хранилища, которым надо подписать наш файл.
+- Key password - пароль для выбранного ключа.
+
+Если мы создаём наше хранилище, то нам необходимо будет заполнить следующие пункты:
+
+- Key store path - путь до хранилища ключей. Выбираем место и вводим название файла. Важно отметить, что не стоит публиковать данный файл в открытых источниках, где доступ к нему могут получить другие люди.
+- Password/Confirm - пароль, состоящий минимум из 6 символов.
+
+И далее предлагается сразу добавить в хранилище первый ключ со следующими параметрами:
+
+- Alias - название ключа
+- Password/Confirm - пароль, состоящий минимум из 6 символов. *Не путать с паролем от хранилища. Они должны быть разными!*
+- Validity (years) - количество лет, сколько будет действовать ключ. По его истечению для последующего обновления приложения в магазинах могут возникнуть проблемы, поэтому рекомендуется выставить большой промежуток.
+- И также информацию о сертификате. Здесь если у Вас нет организации - можно заполнить данные поля как: Personal, а отделение: Mobile. Эти данные не проверяются.
+
+После успешного создания хранилища и заполнения всех полей можно приступить к созданию подписанного APK файла, нажатием кнопки `Next` и последующем выборе типы сборки.
+
+Как итог будет создан релизный подписанный APK файл, который находится по пути: `<ПУТЬ ДО ПРОЕКТА>/app/release/app-release.apk`.
+
+## Автоматически собираем APK/AAB через Github Actions с подписью
+
+Поскольку данный файл нельзя выкладывать в открытом виде в Вашем репозитории, то необходимо положить его в секретницу.
+Секретница — это зашифрованное хранилище, которое позволяет хранить конфиденциальную информацию.
+
+Поскольку секретница не умеет хранить файлики, то нам необходимо преобразовать наш в файл в формат base64. Для этого необходимо выполнить команду, в зависимости от Вашей операционной системы:
+
+Mac:
+```bash
+ base64 --i keystore.jks --i output.txt
+```
+Alpine & Ubuntu:
+```bash
+ base64 keystore.jks > output.txt
+```
+Windows:
+```powershell
+ certutil -encodehex -f "keystore.jks" "output.txt" 0x40000001 1>nul
+```
+
+Далее открываем секретницу экшенов для нашего проекта: `<путь до проекта>/settings/secrets/actions`. Нажимаем на кнопку _New repository secret_, после чего открывается окно с добавлением нового секрета с двумя полями. _Name_ - это имя, к которому мы можем обратиться для получения значения. И поле _Secret_ - собственно значение секрета.
+
+Нам необходимо создать следующие секреты:
+| Имя | Описание |
+|:-:|:-|
+| `SIGNING_KEY_STORE` | Необходимо поместить содержимое файла `output.txt` |
+| `SIGNING_STORE_PASSWORD` | Необходимо написать пароль для хранилища |
+| `SIGNING_KEY_ALIAS` | Необходимо написать название ключа, которое Вы вписывали в поле _Key alias_ |
+| `SIGNING_KEY_PASSWORD` | Необходимо поместить пароль от ключа, который Вы вписывали в поле _Key password_ |
+
+После этого мы готовы к тому, чтобы написать свою первую автоматизацию на Github. Важно отметить, что Github предоставляет бесплатные квоты для данного инструмента только для open source проектов. Если Ваш проект приватный и нет лицензии - то увы, инструментов воспользоваться будет невозможно.
+
+Переходим во вкладку _Actions_: `<путь до проекта>/actions`. По умолчанию нас встречает приветственное окно, которое на основе кода Вашего репозитория предлагает Вам различные автоматизации для проекта. Но давайте для начала немного вводных что это за такие экшены и что они дают: Github Actions - это CI/CD платформа, которая позволяет на языке yaml написать какой-то набор действий/задач/простейших команд и указать при каких условиях они должны выполняться. Это необходимая вещь при разработки больших проектов, поскольку она в автоматическом режиме при любых изменениях позволяет выполнить такие важные задачи, как:
+- Автоматическое тестирование приложения
+- Генерация отчётов (например, насколько увеличился вес приложения)
+- Создание APK/AAB
+- автоматическая публикация в сторы (Google Play/App Gallery/RuStore)
+- и тд.
+
+Давайте сейчас попробуем написать простейшую автоматизацию, которая при любых изменениях в коде будет собирать нам релизные и подписанные APK/AAB файлы. Чтобы это сделать, для начала нам нужно понять, как бы мы это сделали на чистой системе:
+
+1. Установили Java
+2. Скачать из Github исходники нашего проекта
+3. Запустить сборку APK через Gradle нашего проекта
+4. Запустить сборку AAB через Gradle нашего проекта
+
+Отлично! Звучит просто. Давайте создадим пустой экшен и добавим в него следующий код.
+
+```yml
+name: Build app # Имя нашей автоматизации
+# На какие действия будет срабатывать данная автоматизация
+on:
+  # На любое изменение кода в ветке main
+  push:
+    branches: [ "main" ]
+    
+  # На любой pull-request (предложение изменения кода) в ветке main
+  pull_request:
+    branches: [ "main" ]
+
+  # Также разрешаем запуск в ручном режиме
+  workflow_dispatch:
+
+# Здесь указываются действия, которые будут выполнятся. Они могут выполняться как асинхронно, так и последовательно
+jobs:
+  # Это название задачи и её объявление
+  build:
+    # На какой системе будет запущена данная задача
+    runs-on: ubuntu-latest
+
+    # Последовательные шаги для выполнения задачи
+    steps:
+      - name: Hello world
+        run: echo "Hello world!"
+```
+
+По сути мы скопировали минимальный экшен, который в консоли выведет `Hello world!`. Как мы видим, поле `run` предлагает нам выполнение любой консольной команды. Но неужели нам придётся теперь искать как устанавливать Java через консоль и по сути писать скрипт на языке bash? Нет! Github предлагает нам заранее заготовленные популярные действия (которые можете сделать и Вы) и переиспользовать их. Для их выполнения используется следующая конструкция:
+
+```yml
+name: Setup Java
+uses: actions/setup-java@v4 # <--- Конструкция для использование уже заготовленного действия
+with: # Здесь мы указываем параметры, которое требует данное действие
+    distribution: 'corretto'
+    java-version: 17
+```
+
+Как мы видим, за нас уже создали действие, которое умеет разворачивать Java на систему, предоставляемую CI/CD платформой. Для того, чтобы узнать подробнее об этом действии - можно перейти на его репозиторий: `https://github.com/<название действия>`. Для `actions/setup-java` оно находится [здесь](https://github.com/actions/setup-java). Все действия, начинающиеся с `actions` являются официальными от команды Github.
+
+Мы будем использовать только официальные действия, поэтому для нашей задачи подойдут следующие:
+
+- `actions/checkout` - скачать репозиторий на виртуальную машину
+- `actions/setup-java` - установить Java
+- `actions/upload-artifact` - выгрузить полученные файлы из виртуальной машины в результат работы экшена. (Результат работы экшена называется артефакт)
+
+Остались функции, которые нам придётся реализовать через командную строку:
+
+__Декодирование из base64 в `.jks` нашего хранилища__
+
+```bash
+echo "<закодированная строка>" > keystore-b64.txt
+base64 -d keystore-b64.txt > "<Название .jks файла>"
+```
+__Создание APK__
+
+```bash
+./gradlew assembleRelease \
+    -Pandroid.injected.signing.store.file="ПУТЬ ДО ХРАНИЛИЩА" \
+    -Pandroid.injected.signing.store.password="ПАРОЛЬ ОТ ХРАНИЛИЩА" \
+    -Pandroid.injected.signing.key.alias="НАЗВАНИЕ КЛЮЧА" \
+    -Pandroid.injected.signing.key.password="ПАРОЛЬ ОТ КЛЮЧА"
+```
+
+Мы используем дополнительные параметры при сборке, которые позволяют нам указать все необходимые параметры для сборки подписанного APK файла. Аналогичная команда будет и для создания AAB файла: `./gradlew bundleRelease ...`.
+
+При успешном выполнении данных команд файлы сохранятся по пути:
+
+- APK: `app/build/outputs/apk/release/app-release.apk`
+- AAB: `app/build/outputs/bundle/release/app-release.aab`
+
+Когда мы всё знаем, самое время написать наш финальный скрипт:
+
+```yml
+name: Build app
+# На какие действия будет срабатывать данная автоматизация
+on:
+  # На любое изменение кода в ветке main
+  push:
+    branches: [ "main" ]
+    
+  # На любой pull-request (предложение изменения кода) в ветке main
+  pull_request:
+    branches: [ "main" ]
+
+  # Также разрешаем запуск в ручном режиме
+  workflow_dispatch:
+
+# Здесь укзаываются действия, которые будут выполнятся. Они могут выполняться как асинхронно, так и последовательно
+jobs:
+  # Это название задачи и её объявление
+  build:
+    # На какой системе будет запущена данная задача
+    runs-on: ubuntu-latest
+    
+    # Задаём глобальные переменные, которые нам нужны из секретов или просто название файлов
+    env:
+      ENCODED_STRING: ${{ secrets.SIGNING_KEY_STORE }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      STORE_NAME: "keystore.jks"
+
+    # Последовательные шаги для выполнения задачи
+    steps:
+      # Скачиваем в систему наш репозиторий
+      - uses: actions/checkout@v4
+
+      # Устанавливаем Java в нашу систему
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'corretto'
+          java-version: 17
+      
+      # Теперь подсказываем системе - что данные из кэша можно сохранять между сборками, чтобы ускорить их
+      - name: Cache Gradle and wrapper
+        uses: actions/cache@v4
+        with:
+           path: |
+             ~/.gradle/caches
+             ~/.gradle/wrapper
+           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+      
+      # Раскодируем наш файл из секретов с хранилищем всех ключей
+      - name: Decode Keystore
+        run: |
+           echo $ENCODED_STRING > keystore-b64.txt
+           base64 -d keystore-b64.txt > $STORE_NAME
+
+        # Выдаём разрешение на впыолнение файла (иначе если делали из Windows - то файл по умолчанию не запустится)
+      - name: Grant permission for run
+        run: chmod -R 777 ./gradlew
+        
+        # Собираем APK файл с подписью 
+      - name: Build Release apk
+        run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/$STORE_NAME -Pandroid.injected.signing.store.password=$SIGNING_STORE_PASSWORD -Pandroid.injected.signing.key.alias=$SIGNING_KEY_ALIAS -Pandroid.injected.signing.key.password=$SIGNING_KEY_PASSWORD
+        
+        # Собираем AAB файл с подписью 
+      - name: Build Release bundle
+        run: ./gradlew bundleRelease -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/$STORE_NAME -Pandroid.injected.signing.store.password=$SIGNING_STORE_PASSWORD -Pandroid.injected.signing.key.alias=$SIGNING_KEY_ALIAS -Pandroid.injected.signing.key.password=$SIGNING_KEY_PASSWORD
+
+        # Загружаем наши файлики в артефакты
+      - name: Upload Release Build to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts
+          path: |
+            app/build/outputs/apk/release/
+            app/build/outputs/bundle/release/
+```
