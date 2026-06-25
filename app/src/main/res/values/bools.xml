@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-
-    <!-- Selecionar todo o texto ao focar no campo de substituição -->
-    <bool name="md_selected_all_text">true</bool>
-
-</resources>
-
-
